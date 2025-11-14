@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cyberpunk Neon Market</title>
+    <link rel="stylesheet" href="/styles/main.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="neon-grid"></div>
+    <header class="hero">
+      <div class="hero__content">
+        <h1>Cyberpunk Neon Market</h1>
+        <p>Compra mercancía futurista con experiencias inmersivas, promociones exclusivas y seguridad total.</p>
+        <button id="explore" class="btn btn--primary">Explorar mercancía</button>
+      </div>
+      <div class="hero__visual">
+        <div class="card hologram">
+          <span>Ofertas XR</span>
+          <strong>Hasta 50% OFF</strong>
+          <small>Activación inmediata</small>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="controls" id="catalog">
+        <div class="search">
+          <label for="search">Busca gadgets, chips, moda y más</label>
+          <input type="search" id="search" name="search" placeholder="Implante neural, chaqueta, dron..." autocomplete="off" />
+          <ul id="suggestions" class="suggestions"></ul>
+        </div>
+        <div class="filters">
+          <select id="categoryFilter">
+            <option value="">Todas las categorías</option>
+            <option value="Moda">Moda Neon</option>
+            <option value="Tecnología">Tecnología</option>
+            <option value="Implantes">Implantes</option>
+          </select>
+          <input type="number" id="minPrice" placeholder="Mín $" min="0" />
+          <input type="number" id="maxPrice" placeholder="Máx $" min="0" />
+          <button id="applyFilters" class="btn">Filtrar</button>
+        </div>
+      </section>
+
+      <section class="products" id="products"></section>
+
+      <aside class="cart" id="cart">
+        <h2>Carrito Holográfico</h2>
+        <ul id="cartItems"></ul>
+        <div class="cart__total">
+          <span>Total:</span>
+          <strong id="cartTotal">$0.00</strong>
+        </div>
+        <button id="checkout" class="btn btn--primary">Proceder al pago</button>
+      </aside>
+
+      <section class="reviews" id="reviews">
+        <h2>Últimas reseñas</h2>
+        <div id="reviewsList" class="reviews__list"></div>
+      </section>
+
+      <section class="blog" id="blog">
+        <h2>Blog de sugerencias</h2>
+        <div id="blogPosts" class="blog__posts"></div>
+      </section>
+
+      <section class="dashboard" id="dashboard">
+        <h2>Dashboard de ventas</h2>
+        <canvas id="salesChart" width="400" height="200"></canvas>
+        <ul id="topProducts"></ul>
+      </section>
+    </main>
+
+    <footer>
+      <p>© 2088 Cyberpunk Neon Market. Hecho con amor neon en Neo-México.</p>
+    </footer>
+
+    <script type="module" src="/dist/main.js"></script>
+  </body>
+</html>
