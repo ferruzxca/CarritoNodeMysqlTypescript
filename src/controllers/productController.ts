@@ -47,13 +47,13 @@ export const listProducts = async (req: Request, res: Response): Promise<void> =
   }
   if (q) {
     where.OR = [
-      { name: { contains: q, mode: 'insensitive' as const } },
-      { description: { contains: q, mode: 'insensitive' as const } },
-      { tags: { has: q } }
+      { name: { contains: q.toLowerCase() } },
+      { description: { contains: q.toLowerCase() } },
+      { tags: { array_contains: q.toLowerCase() } }
     ];
   }
   if (tag) {
-    where.tags = { has: tag };
+    where.tags = { array_contains: tag.toLowerCase() };
   }
 
   const products = await prisma.product.findMany({
@@ -78,9 +78,11 @@ export const autocompleteProducts = async (req: Request, res: Response): Promise
     return;
   }
 
+  const searchTerm = query.data.toLowerCase();
+
   const products = await prisma.product.findMany({
     where: {
-      name: { contains: query.data, mode: 'insensitive' },
+      name: { contains: searchTerm }
     },
     select: { id: true, name: true, slug: true },
     take: 8
@@ -91,19 +93,22 @@ export const autocompleteProducts = async (req: Request, res: Response): Promise
 
 export const createProduct = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    if (!req.role || ![Role.SUPERADMIN, Role.VENDOR].includes(req.role)) {
+    const allowedRoles: Role[] = [Role.SUPERADMIN, Role.VENDOR];
+    if (!req.role || !allowedRoles.includes(req.role)) {
       res.status(403).json({ message: 'No tienes permisos para crear productos.' });
       return;
     }
 
     const payload = createProductSchema.parse(req.body);
-    const { vendorId: payloadVendorId, ...productData } = payload;
+    const { vendorId: payloadVendorId, tags, ...productData } = payload;
 
     const vendorId = req.role === Role.VENDOR ? req.userId : payloadVendorId;
+    const normalizedTags = tags.map((tagValue) => tagValue.toLowerCase());
 
     const product = await prisma.product.create({
       data: {
         ...productData,
+        tags: normalizedTags,
         vendorId
       }
     });
@@ -139,7 +144,12 @@ export const updateProduct = async (req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    const data = req.role === Role.VENDOR ? { ...payload, vendorId: product.vendorId } : payload;
+    const normalizedPayload =
+      payload.tags && payload.tags.length > 0
+        ? { ...payload, tags: payload.tags.map((tagValue) => tagValue.toLowerCase()) }
+        : payload;
+
+    const data = req.role === Role.VENDOR ? { ...normalizedPayload, vendorId: product.vendorId } : normalizedPayload;
 
     const updated = await prisma.product.update({ where: { id }, data });
     res.status(200).json(updated);

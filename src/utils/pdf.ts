@@ -45,7 +45,7 @@ export const createInvoicePdf = async ({ order, user }: InvoiceData): Promise<st
       .text('Detalle de compra:', { underline: true })
       .moveDown(0.5);
 
-    order.items.forEach((item) => {
+    order.items.forEach((item: (typeof order.items)[number]) => {
       const subtotal = (item.priceCents * item.quantity) / 100;
       doc.fillColor('#f8f8f8').text(`- ${item.productName} x${item.quantity}: $${subtotal.toFixed(2)} MXN`);
     });

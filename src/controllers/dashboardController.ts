@@ -9,7 +9,9 @@ export const getDashboardMetrics = async (req: AuthenticatedRequest, res: Respon
     return;
   }
 
-  const [orders, topProducts, totalUsers] = await Promise.all([
+  type TopProductGroup = { productId: string; _sum: { quantity: number | null } };
+
+  const [orders, topProductsRaw, totalUsers] = await Promise.all([
     prisma.order.findMany({ select: { createdAt: true, totalCents: true } }),
     prisma.orderItem.groupBy({
       by: ['productId'],
@@ -19,6 +21,8 @@ export const getDashboardMetrics = async (req: AuthenticatedRequest, res: Respon
     }),
     prisma.user.count()
   ]);
+
+  const topProducts = topProductsRaw as TopProductGroup[];
 
   const salesByMonthMap = new Map<string, number>();
   for (const order of orders) {
@@ -31,13 +35,13 @@ export const getDashboardMetrics = async (req: AuthenticatedRequest, res: Respon
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([period, total]) => ({ period, total }));
 
-  const productIds = topProducts.map((item) => item.productId);
+  const productIds = topProducts.map((item: TopProductGroup) => item.productId);
   const productDetails = await prisma.product.findMany({
     where: { id: { in: productIds } },
     select: { id: true, name: true }
   });
   const productMap = new Map(productDetails.map((product) => [product.id, product.name]));
-  const topProductsEnriched = topProducts.map((item) => ({
+  const topProductsEnriched = topProducts.map((item: TopProductGroup) => ({
     productId: item.productId,
     productName: productMap.get(item.productId) ?? 'Producto misterioso',
     totalSold: item._sum.quantity ?? 0

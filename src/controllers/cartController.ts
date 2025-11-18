@@ -5,6 +5,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { createInvoicePdf, ensureInvoiceDir } from '../utils/pdf';
 import path from 'path';
 import { sendEmail } from '../services/emailService';
+import { Prisma } from '@prisma/client';
 
 const addItemSchema = z.object({
   productId: z.string().cuid(),
@@ -176,9 +177,12 @@ export const checkout = async (req: AuthenticatedRequest, res: Response): Promis
 
     await ensureInvoiceDir();
 
-    const order = await prisma.$transaction(async (tx) => {
+    const order = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = await tx.user.findUniqueOrThrow({ where: { id: req.userId } });
-      const totalCents = cart.items.reduce((acc, item) => acc + item.priceCents * item.quantity, 0);
+      const totalCents = cart.items.reduce(
+        (acc: number, item: typeof cart.items[number]) => acc + item.priceCents * item.quantity,
+        0
+      );
 
       await tx.cart.update({ where: { id: cart.id }, data: { userId: user.id } });
 
@@ -189,7 +193,7 @@ export const checkout = async (req: AuthenticatedRequest, res: Response): Promis
           totalCents,
           status: 'PAID',
           items: {
-            create: cart.items.map((item) => ({
+            create: cart.items.map((item: (typeof cart.items)[number]) => ({
               productId: item.productId,
               quantity: item.quantity,
               priceCents: item.priceCents
@@ -209,7 +213,7 @@ export const checkout = async (req: AuthenticatedRequest, res: Response): Promis
     const orderWithNames = {
       ...order.order,
       items: await Promise.all(
-        order.order.items.map(async (item) => {
+        order.order.items.map(async (item: (typeof order.order.items)[number]) => {
           const product = await prisma.product.findUniqueOrThrow({ where: { id: item.productId } });
           return { ...item, productName: product.name };
         })

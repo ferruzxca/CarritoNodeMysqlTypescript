@@ -12,18 +12,18 @@ import { ensureInvoiceDir } from './utils/pdf';
 
 const MySQLStore = connectMySQL(session);
 
-interface MySQLConnectionOptions {
+interface SessionStoreConnectionOptions {
   host: string;
   port: number;
   user: string;
   password: string;
   database: string;
-  ssl?: unknown;
+  ssl?: { rejectUnauthorized: boolean };
 }
 
-const parseDatabaseUrl = (): MySQLConnectionOptions => {
+const parseDatabaseUrl = (): SessionStoreConnectionOptions => {
   const url = new URL(env.DATABASE_URL);
-  const options: MySQLConnectionOptions = {
+  const options: SessionStoreConnectionOptions = {
     host: url.hostname,
     port: Number(url.port || '3306'),
     user: decodeURIComponent(url.username),
@@ -38,20 +38,20 @@ const parseDatabaseUrl = (): MySQLConnectionOptions => {
   return options;
 };
 
-const sessionStore = new MySQLStore(
-  {
-    createDatabaseTable: true,
-    schema: {
-      tableName: 'user_sessions',
-      columnNames: {
-        session_id: 'session_id',
-        expires: 'expires',
-        data: 'data'
-      }
+const sessionStore = new MySQLStore({
+  ...parseDatabaseUrl(),
+  clearExpired: true,
+  checkExpirationInterval: 15 * 60 * 1000,
+  createDatabaseTable: true,
+  schema: {
+    tableName: 'user_sessions',
+    columnNames: {
+      session_id: 'session_id',
+      expires: 'expires',
+      data: 'data'
     }
-  },
-  parseDatabaseUrl()
-);
+  }
+});
 
 export const createApp = async (): Promise<express.Application> => {
   await ensureInvoiceDir();

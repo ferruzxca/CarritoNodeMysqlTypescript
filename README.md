@@ -50,7 +50,7 @@ Aplicación web de e-commerce futurista creada con Node.js, TypeScript y MySQL. 
 
 | Comando             | Descripción                                                                 |
 | ------------------- | --------------------------------------------------------------------------- |
-| `npm run dev`       | Inicia el servidor Express en modo desarrollo con recarga automática.       |
+| `npm run dev`       | Ejecuta `prisma generate` automáticamente e inicia el servidor Express en modo desarrollo con recarga automática. |
 | `npm run build`     | Compila el backend TypeScript a `dist/` y el frontend a `public/dist`.      |
 | `npm start`         | Ejecuta la versión compilada.                                               |
 | `npm run prisma`    | Proxy para comandos de Prisma (`npm run prisma migrate deploy`, etc.).      |

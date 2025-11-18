@@ -18,9 +18,12 @@ const loginSchema = z.object({
   password: z.string().min(8)
 });
 
+type RegisterInput = z.infer<typeof registerSchema>;
+type LoginInput = z.infer<typeof loginSchema>;
+
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const data = registerSchema.parse(req.body);
+    const data: RegisterInput = registerSchema.parse(req.body);
     const passwordHash = await hashPassword(data.password);
 
     const user = await prisma.user.create({
@@ -54,7 +57,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const data = loginSchema.parse(req.body);
+    const data: LoginInput = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: data.email.toLowerCase() } });
 
     if (!user) {
