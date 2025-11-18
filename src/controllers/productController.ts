@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../prisma';
 import { z } from 'zod';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { Role } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 
 const createProductSchema = z.object({
   name: z.string().min(3),
@@ -34,22 +34,28 @@ export const listProducts = async (req: Request, res: Response): Promise<void> =
   }
 
   const { category, minPrice, maxPrice, q, tag } = params.data;
-  const where: Record<string, unknown> = {};
+  const where: Prisma.ProductWhereInput = {};
 
   if (category) {
     where.category = category;
   }
   if (typeof minPrice === 'number' && !Number.isNaN(minPrice)) {
-    where.priceCents = { ...(where.priceCents as object), gte: Math.round(minPrice * 100) };
+    const existingFilter =
+      typeof where.priceCents === 'object' && where.priceCents !== null ? where.priceCents : undefined;
+    where.priceCents = { ...(existingFilter ?? {}), gte: Math.round(minPrice * 100) };
   }
   if (typeof maxPrice === 'number' && !Number.isNaN(maxPrice)) {
-    where.priceCents = { ...(where.priceCents as object), lte: Math.round(maxPrice * 100) };
+    const existingFilter =
+      typeof where.priceCents === 'object' && where.priceCents !== null ? where.priceCents : undefined;
+    where.priceCents = { ...(existingFilter ?? {}), lte: Math.round(maxPrice * 100) };
   }
   if (q) {
+    const normalizedQuery = q.trim();
+    const normalizedTagTerm = normalizedQuery.toLowerCase();
     where.OR = [
-      { name: { contains: q.toLowerCase() } },
-      { description: { contains: q.toLowerCase() } },
-      { tags: { array_contains: q.toLowerCase() } }
+      { name: { contains: normalizedQuery } },
+      { description: { contains: normalizedQuery } },
+      { tags: { array_contains: normalizedTagTerm } }
     ];
   }
   if (tag) {
@@ -59,16 +65,46 @@ export const listProducts = async (req: Request, res: Response): Promise<void> =
   const products = await prisma.product.findMany({
     where,
     include: {
-      promotions: { where: { active: true } },
-      reviews: {
-        include: { user: { select: { name: true, avatarUrl: true } } },
-        orderBy: { createdAt: 'desc' }
-      }
+      promotions: { where: { active: true } }
     },
     orderBy: { createdAt: 'desc' }
   });
 
-  res.status(200).json(products);
+  if (products.length === 0) {
+    res.status(200).json([]);
+    return;
+  }
+
+  const productIds = products.map((product) => product.id);
+  const reviews = await prisma.review.findMany({
+    where: { productId: { in: productIds } },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      rating: true,
+      comment: true,
+      productId: true,
+      createdAt: true,
+      user: { select: { name: true, avatarUrl: true } }
+    }
+  });
+
+  type ReviewWithFallback = (typeof reviews)[number] & { user: { name: string; avatarUrl: string | null } };
+
+  const reviewsByProduct = new Map<string, ReviewWithFallback[]>();
+  for (const review of reviews) {
+    const user = review.user ?? { name: 'Usuario desconocido', avatarUrl: null };
+    const entry = reviewsByProduct.get(review.productId) ?? [];
+    entry.push({ ...review, user });
+    reviewsByProduct.set(review.productId, entry);
+  }
+
+  const hydratedProducts = products.map((product) => ({
+    ...product,
+    reviews: reviewsByProduct.get(product.id) ?? []
+  }));
+
+  res.status(200).json(hydratedProducts);
 };
 
 export const autocompleteProducts = async (req: Request, res: Response): Promise<void> => {

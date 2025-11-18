@@ -14,9 +14,28 @@ export const listBlogPosts = async (_req: AuthenticatedRequest, res: Response): 
   const posts = await prisma.blogPost.findMany({
     where: { published: true },
     orderBy: { createdAt: 'desc' },
-    include: { author: { select: { name: true, avatarUrl: true } } }
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      createdAt: true,
+      authorId: true
+    }
   });
-  res.status(200).json(posts);
+
+  const authorIds = Array.from(new Set(posts.map((post) => post.authorId)));
+  const authors = await prisma.user.findMany({
+    where: { id: { in: authorIds } },
+    select: { id: true, name: true, avatarUrl: true }
+  });
+  const authorMap = new Map(authors.map((author) => [author.id, author]));
+
+  const enrichedPosts = posts.map((post) => ({
+    ...post,
+    author: authorMap.get(post.authorId) ?? { name: 'Autor desconocido', avatarUrl: null }
+  }));
+
+  res.status(200).json(enrichedPosts);
 };
 
 export const createBlogPost = async (req: AuthenticatedRequest, res: Response): Promise<void> => {

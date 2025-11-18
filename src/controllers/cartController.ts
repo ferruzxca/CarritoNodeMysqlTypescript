@@ -8,7 +8,7 @@ import { sendEmail } from '../services/emailService';
 import { Prisma } from '@prisma/client';
 
 const addItemSchema = z.object({
-  productId: z.string().cuid(),
+  productId: z.string().min(1, 'Se requiere el identificador del producto.'),
   quantity: z.number().int().positive()
 });
 
@@ -17,13 +17,33 @@ const updateItemSchema = z.object({
 });
 
 export const getOrCreateCart = async (req: Request): Promise<string> => {
-  if (req.session.cartId) {
-    return req.session.cartId;
+  const ensureCartPersistence = async (cartId: string | undefined): Promise<string | null> => {
+    if (!cartId) return null;
+    const existingCart = await prisma.cart.findUnique({ where: { id: cartId } });
+    return existingCart?.id ?? null;
+  };
+
+  const persistedCartId = await ensureCartPersistence(req.session.cartId);
+  if (persistedCartId) {
+    req.session.cartId = persistedCartId;
+    return persistedCartId;
+  }
+
+  if (req.session.user?.id) {
+    const userCart = await prisma.cart.findFirst({
+      where: { userId: req.session.user.id },
+      orderBy: { createdAt: 'desc' }
+    });
+    if (userCart) {
+      req.session.cartId = userCart.id;
+      return userCart.id;
+    }
   }
 
   const cart = await prisma.cart.create({
     data: {
-      sessionId: req.sessionID
+      sessionId: req.sessionID,
+      userId: req.session.user?.id
     }
   });
 
@@ -227,28 +247,38 @@ export const checkout = async (req: AuthenticatedRequest, res: Response): Promis
 
     const invoicePath = path.join(process.cwd(), 'storage', 'invoices', `invoice-${order.order.id}.pdf`);
 
-    await sendEmail({
-      to: order.user.email,
-      subject: 'Tu factura futurista ha llegado',
-      html: `
-        <h1 style="color:#ff2bff;font-family:monospace;">Gracias por tu compra</h1>
-        <p>Adjuntamos la factura electrónica de tu compra en Cyberpunk Neon Market.</p>
-        <p>Total pagado: <strong>$${(order.order.totalCents / 100).toFixed(2)} MXN</strong></p>
-      `,
-      attachments: [{ filename: `invoice-${order.order.id}.pdf`, path: invoicePath }]
-    });
+    let emailSent = false;
+    try {
+      await sendEmail({
+        to: order.user.email,
+        subject: 'Tu factura futurista ha llegado',
+        html: `
+          <h1 style="color:#ff2bff;font-family:monospace;">Gracias por tu compra</h1>
+          <p>Adjuntamos la factura electrónica de tu compra en Cyberpunk Neon Market.</p>
+          <p>Total pagado: <strong>$${(order.order.totalCents / 100).toFixed(2)} MXN</strong></p>
+        `,
+        attachments: [{ filename: `invoice-${order.order.id}.pdf`, path: invoicePath }]
+      });
+      emailSent = true;
+    } catch (emailError) {
+      console.error('No se pudo enviar la factura por correo, se continuará con el flujo.', emailError);
+    }
 
     await prisma.invoice.create({
       data: {
         orderId: order.order.id,
         pdfUrl: invoiceUrl,
-        sentAt: new Date()
+        sentAt: emailSent ? new Date() : null
       }
     });
 
     await prisma.order.update({ where: { id: order.order.id }, data: { invoiceUrl } });
 
-    res.status(201).json({ message: 'Pago realizado con éxito.', orderId: order.order.id, invoiceUrl });
+    const responseMessage = emailSent
+      ? 'Pago realizado con éxito. Revisa tu correo para la factura.'
+      : 'Pago realizado con éxito. No pudimos enviar la factura por correo, descárgala desde el enlace.';
+
+    res.status(201).json({ message: responseMessage, orderId: order.order.id, invoiceUrl, emailSent });
   } catch (error) {
     console.error('Error en checkout', error);
     res.status(500).json({ message: 'No se pudo procesar el pago.' });

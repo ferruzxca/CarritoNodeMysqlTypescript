@@ -27,6 +27,67 @@
     </header>
 
     <main>
+      <section class="auth-panel collapsed" id="auth">
+        <div class="auth-panel__header">
+          <div>
+            <p class="eyebrow">Control de acceso</p>
+            <h2>Sesiones seguras</h2>
+            <p id="authStatus">Verificando sesión...</p>
+          </div>
+          <button
+            class="btn btn--ghost auth-panel__toggle"
+            id="toggleAuthPanel"
+            type="button"
+            aria-expanded="false"
+            aria-controls="authPanelBody"
+          >
+            Mostrar panel
+          </button>
+        </div>
+        <div class="auth-panel__body" id="authPanelBody" hidden>
+          <div class="auth-panel__forms">
+            <form id="registerForm" class="auth-form">
+              <h3>Crear usuario</h3>
+              <label>
+                Nombre
+                <input type="text" name="name" required minlength="3" placeholder="Ava Matrix" />
+              </label>
+              <label>
+                Correo
+                <input type="email" name="email" required placeholder="ava@neon.dev" />
+              </label>
+              <label>
+                Contraseña (12+ caracteres)
+                <input type="password" name="password" required minlength="12" placeholder="••••••••••••" />
+              </label>
+              <label>
+                Rol
+                <select name="role">
+                  <option value="">Cliente</option>
+                  <option value="VENDOR">Vendedor</option>
+                  <option value="SUPERADMIN">Superadmin</option>
+                </select>
+              </label>
+              <button class="btn btn--secondary" type="submit">Registrar</button>
+            </form>
+
+            <form id="loginForm" class="auth-form">
+              <h3>Iniciar sesión</h3>
+              <label>
+                Correo
+                <input type="email" name="email" required placeholder="ava@neon.dev" />
+              </label>
+              <label>
+                Contraseña
+                <input type="password" name="password" required placeholder="••••••••••••" />
+              </label>
+              <button class="btn btn--primary" type="submit">Entrar</button>
+            </form>
+          </div>
+          <button id="logoutButton" class="btn btn--ghost" type="button">Cerrar sesión</button>
+        </div>
+      </section>
+      
       <section class="controls" id="catalog">
         <div class="search">
           <label for="search">Busca gadgets, chips, moda y más</label>
@@ -73,10 +134,98 @@
         <canvas id="salesChart" width="400" height="200"></canvas>
         <ul id="topProducts"></ul>
       </section>
+
+      <section class="checkout-flow hidden" id="checkoutFlow">
+        <div class="checkout-flow__header">
+          <div>
+            <p class="eyebrow">Simulación de checkout</p>
+            <h2>Factura y logística inmersiva</h2>
+            <p id="checkoutFlowStatus">Valida tu sesión y genera la factura holográfica.</p>
+          </div>
+          <button class="btn btn--ghost hidden" id="dismissCheckoutFlow" type="button">Cerrar vista</button>
+        </div>
+        <div class="checkout-flow__progress">
+          <div class="checkout-flow__step is-active" data-step-indicator="invoice">
+            <span>1</span>
+            <strong>Factura</strong>
+            <small>Detalle de compra</small>
+          </div>
+          <div class="checkout-flow__step" data-step-indicator="shipping">
+            <span>2</span>
+            <strong>Envío</strong>
+            <small>Opciones futuristas</small>
+          </div>
+          <div class="checkout-flow__step" data-step-indicator="confirmation">
+            <span>3</span>
+            <strong>Seguimiento</strong>
+            <small>Estado del paquete</small>
+          </div>
+        </div>
+
+        <div class="checkout-panels">
+          <article class="checkout-panel" data-step="invoice">
+            <header class="checkout-panel__header">
+              <div>
+                <p class="eyebrow">Factura electrónica</p>
+                <h3>Pedido <span id="invoiceNumber">—</span></h3>
+                <p>Cliente: <span id="invoiceUser">Sesión requerida</span></p>
+              </div>
+              <div class="invoice-status">
+                <span id="invoiceAutoStatus">Facturación en espera...</span>
+              </div>
+            </header>
+            <ul id="invoiceItems" class="invoice-items"></ul>
+            <div class="invoice-total">
+              <span>Total pagado</span>
+              <strong id="invoiceTotal">$0.00 MXN</strong>
+            </div>
+            <div class="invoice-actions">
+              <button class="btn btn--secondary" id="sendInvoiceEmail" type="button">Enviar por correo</button>
+              <button class="btn btn--secondary" id="sendInvoiceWhatsApp" type="button">Enviar por WhatsApp</button>
+              <a class="btn btn--primary" id="downloadInvoice" href="#" target="_blank" rel="noopener">Descargar PDF</a>
+            </div>
+            <p class="status-pill hidden" id="invoiceShareStatus"></p>
+            <div class="panel-actions">
+              <button class="btn btn--primary" id="goToShipping" type="button">Continuar con envíos</button>
+            </div>
+          </article>
+
+          <article class="checkout-panel hidden" data-step="shipping">
+            <header class="checkout-panel__header">
+              <div>
+                <p class="eyebrow">Opciones de envío</p>
+                <h3>Define cómo recibes tu pedido</h3>
+                <p>Selecciona una modalidad de entrega. Puedes ajustar la opción antes de confirmar.</p>
+              </div>
+            </header>
+            <div id="shippingOptions" class="shipping-options"></div>
+            <div class="panel-actions">
+              <button class="btn btn--ghost" id="backToInvoice" type="button">Volver a factura</button>
+              <button class="btn btn--primary" id="confirmShippingButton" type="button" disabled>Confirmar envío</button>
+            </div>
+          </article>
+
+          <article class="checkout-panel hidden" data-step="confirmation">
+            <header class="checkout-panel__header">
+              <div>
+                <p class="eyebrow">Confirmación</p>
+                <h3>Seguimiento del paquete</h3>
+                <p>Visualiza los hitos de envío y el estado del paquete simulado.</p>
+              </div>
+            </header>
+            <div id="shippingSummary" class="shipping-summary"></div>
+            <div id="trackingTimeline" class="tracking-timeline"></div>
+            <div class="panel-actions">
+              <button class="btn btn--ghost" id="backToShipping" type="button">Editar envío</button>
+              <button class="btn btn--primary" id="finishCheckoutFlow" type="button">Finalizar simulación</button>
+            </div>
+          </article>
+        </div>
+      </section>
     </main>
 
     <footer>
-      <p>© 2088 Cyberpunk Neon Market. Hecho con amor neon en Neo-México.</p>
+      <p>© 2025 Cyberpunk Innovex.</p>
     </footer>
 
     <script type="module" src="/dist/main.js"></script>

@@ -40,6 +40,70 @@ interface BlogPost {
 
 type SalesPoint = { period: string; total: number };
 
+type SessionUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+};
+
+type CheckoutStep = 'invoice' | 'shipping' | 'confirmation';
+
+type CheckoutSummary = {
+  orderId: string;
+  invoiceUrl?: string;
+  totalCents: number;
+  items: { name: string; quantity: number; priceCents: number }[];
+  emailSent: boolean;
+};
+
+type ShippingOption = {
+  id: string;
+  name: string;
+  eta: string;
+  description: string;
+  priceCents: number;
+  badge: string;
+  perks: string[];
+};
+
+type CheckoutResponse = {
+  message: string;
+  orderId: string;
+  invoiceUrl: string;
+  emailSent: boolean;
+};
+
+const shippingOptionsCatalog: ShippingOption[] = [
+  {
+    id: 'drone',
+    name: 'Entrega con dron autónomo',
+    eta: '2 - 4 horas',
+    description: 'Dron sigiloso con refrigeración líquida para hardware sensible.',
+    priceCents: 19900,
+    badge: 'Ultra rápido',
+    perks: ['Seguimiento en vivo', 'Autorización biométrica', 'Seguro antigravedad']
+  },
+  {
+    id: 'neon-rider',
+    name: 'Neon Rider nocturno',
+    eta: '24 horas',
+    description: 'Mensajero especializado en zonas urbanas con cámaras ONV.',
+    priceCents: 8900,
+    badge: 'Balanceado',
+    perks: ['Notificaciones proactivas', 'Sellado anti-manipulación', 'Firma holográfica']
+  },
+  {
+    id: 'pickup',
+    name: 'Recolecta en cápsula segura',
+    eta: 'Listo en 4 horas',
+    description: 'Resguardo en lockers 24/7 con autenticación facial.',
+    priceCents: 0,
+    badge: 'Sin costo',
+    perks: ['Acceso 24/7', 'Locker refrigerado', 'Código dinámico']
+  }
+];
+
 const productsContainer = document.querySelector<HTMLDivElement>('#products');
 const cartItemsContainer = document.querySelector<HTMLUListElement>('#cartItems');
 const cartTotalElement = document.querySelector<HTMLSpanElement>('#cartTotal');
@@ -48,6 +112,40 @@ const reviewsContainer = document.querySelector<HTMLDivElement>('#reviewsList');
 const blogContainer = document.querySelector<HTMLDivElement>('#blogPosts');
 const salesChart = document.querySelector<HTMLCanvasElement>('#salesChart');
 const topProductsList = document.querySelector<HTMLUListElement>('#topProducts');
+const registerForm = document.querySelector<HTMLFormElement>('#registerForm');
+const loginForm = document.querySelector<HTMLFormElement>('#loginForm');
+const logoutButton = document.querySelector<HTMLButtonElement>('#logoutButton');
+const authStatusElement = document.querySelector<HTMLParagraphElement>('#authStatus');
+const authPanelElement = document.querySelector<HTMLElement>('#auth');
+const authPanelBody = document.querySelector<HTMLDivElement>('#authPanelBody');
+const toggleAuthPanelButton = document.querySelector<HTMLButtonElement>('#toggleAuthPanel');
+const checkoutFlowSection = document.querySelector<HTMLElement>('#checkoutFlow');
+const checkoutFlowStatusElement = document.querySelector<HTMLParagraphElement>('#checkoutFlowStatus');
+const dismissCheckoutFlowButton = document.querySelector<HTMLButtonElement>('#dismissCheckoutFlow');
+const invoiceNumberElement = document.querySelector<HTMLSpanElement>('#invoiceNumber');
+const invoiceUserElement = document.querySelector<HTMLSpanElement>('#invoiceUser');
+const invoiceItemsList = document.querySelector<HTMLUListElement>('#invoiceItems');
+const invoiceTotalValue = document.querySelector<HTMLSpanElement>('#invoiceTotal');
+const invoiceAutoStatus = document.querySelector<HTMLSpanElement>('#invoiceAutoStatus');
+const invoiceShareStatus = document.querySelector<HTMLParagraphElement>('#invoiceShareStatus');
+const sendInvoiceEmailButton = document.querySelector<HTMLButtonElement>('#sendInvoiceEmail');
+const sendInvoiceWhatsAppButton = document.querySelector<HTMLButtonElement>('#sendInvoiceWhatsApp');
+const downloadInvoiceLink = document.querySelector<HTMLAnchorElement>('#downloadInvoice');
+const goToShippingButton = document.querySelector<HTMLButtonElement>('#goToShipping');
+const backToInvoiceButton = document.querySelector<HTMLButtonElement>('#backToInvoice');
+const backToShippingButton = document.querySelector<HTMLButtonElement>('#backToShipping');
+const confirmShippingButton = document.querySelector<HTMLButtonElement>('#confirmShippingButton');
+const finishCheckoutFlowButton = document.querySelector<HTMLButtonElement>('#finishCheckoutFlow');
+const shippingOptionsContainer = document.querySelector<HTMLDivElement>('#shippingOptions');
+const shippingSummaryContainer = document.querySelector<HTMLDivElement>('#shippingSummary');
+const trackingTimelineContainer = document.querySelector<HTMLDivElement>('#trackingTimeline');
+
+let sessionUser: SessionUser | null = null;
+let latestCartData: Cart | null = null;
+let lastCheckoutSummary: CheckoutSummary | null = null;
+let selectedShippingOption: ShippingOption | null = null;
+let currentCheckoutStep: CheckoutStep = 'invoice';
+let authPanelExpanded = false;
 
 const fetchJSON = async <T>(url: string, options?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -73,6 +171,221 @@ const fetchJSON = async <T>(url: string, options?: RequestInit): Promise<T> => {
 };
 
 const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)} MXN`;
+
+const setAuthPanelState = (expanded: boolean): void => {
+  authPanelExpanded = expanded;
+  if (!authPanelElement || !authPanelBody || !toggleAuthPanelButton) return;
+  toggleAuthPanelButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  toggleAuthPanelButton.textContent = expanded ? 'Ocultar panel' : 'Mostrar panel';
+  if (expanded) {
+    authPanelElement.classList.remove('collapsed');
+    authPanelBody.removeAttribute('hidden');
+  } else {
+    authPanelElement.classList.add('collapsed');
+    authPanelBody.setAttribute('hidden', 'true');
+  }
+};
+
+const openAuthPanel = (): void => setAuthPanelState(true);
+const collapseAuthPanel = (): void => setAuthPanelState(false);
+
+const cloneCartForInvoice = (cart: Cart): Cart => ({
+  id: cart.id,
+  items: cart.items.map((item) => ({
+    id: item.id,
+    quantity: item.quantity,
+    priceCents: item.priceCents,
+    product: { ...item.product }
+  }))
+});
+
+const buildCheckoutSummary = (cart: Cart, response: CheckoutResponse): CheckoutSummary => {
+  const items = cart.items.map((item) => ({
+    name: item.product.name,
+    quantity: item.quantity,
+    priceCents: item.priceCents
+  }));
+  const totalCents = items.reduce((acc, item) => acc + item.priceCents * item.quantity, 0);
+  return {
+    orderId: response.orderId,
+    invoiceUrl: response.invoiceUrl,
+    totalCents,
+    items,
+    emailSent: response.emailSent
+  };
+};
+
+const updateCheckoutFlowStatus = (step: CheckoutStep) => {
+  if (!checkoutFlowStatusElement) return;
+  const messages: Record<CheckoutStep, string> = {
+    invoice: 'Factura generada y lista para compartirse.',
+    shipping: 'Selecciona cómo llegara tu pedido futurista.',
+    confirmation: 'Confirmación lista. Monitorea el trayecto simulado del paquete.'
+  };
+  checkoutFlowStatusElement.textContent = messages[step];
+};
+
+const updateCheckoutStep = (step: CheckoutStep) => {
+  currentCheckoutStep = step;
+  checkoutFlowSection?.querySelectorAll('[data-step]').forEach((panelElement) => {
+    const panel = panelElement as HTMLElement;
+    panel.classList.toggle('hidden', panel.dataset.step !== step);
+  });
+  checkoutFlowSection?.querySelectorAll('[data-step-indicator]').forEach((indicatorElement) => {
+    const indicator = indicatorElement as HTMLElement;
+    indicator.classList.toggle('is-active', indicator.dataset.stepIndicator === step);
+  });
+  updateCheckoutFlowStatus(step);
+};
+
+const renderShippingOptions = () => {
+  if (!shippingOptionsContainer) return;
+  shippingOptionsContainer.innerHTML = shippingOptionsCatalog
+    .map(
+      (option) => `
+        <button type="button" class="shipping-option-card" data-option="${option.id}">
+          <span class="shipping-option-card__badge">${option.badge}</span>
+          <strong>${option.name}</strong>
+          <span>${option.description}</span>
+          <span>ETA: ${option.eta}</span>
+          <span>${formatCurrency(option.priceCents)}</span>
+          <ul class="shipping-option-card__perks">
+            ${option.perks.map((perk) => `<li>• ${perk}</li>`).join('')}
+          </ul>
+        </button>
+      `
+    )
+    .join('');
+};
+
+const resetShippingSelection = () => {
+  selectedShippingOption = null;
+  confirmShippingButton?.setAttribute('disabled', 'true');
+  shippingSummaryContainer && (shippingSummaryContainer.innerHTML = '');
+  trackingTimelineContainer && (trackingTimelineContainer.innerHTML = '');
+  shippingOptionsContainer
+    ?.querySelectorAll('.shipping-option-card')
+    .forEach((card) => card.classList.remove('is-selected'));
+};
+
+const renderInvoiceSummary = (summary: CheckoutSummary) => {
+  if (!invoiceNumberElement || !invoiceItemsList || !invoiceTotalValue) return;
+  invoiceNumberElement.textContent = `#${summary.orderId}`;
+  if (invoiceUserElement) {
+    invoiceUserElement.textContent = sessionUser ? `${sessionUser.name} · ${sessionUser.email}` : 'Cliente verificado';
+  }
+  invoiceItemsList.innerHTML =
+    summary.items
+      .map(
+        (item) => `
+          <li class="invoice-item">
+            <div>
+              <strong>${item.name}</strong>
+              <span>${item.quantity} x ${formatCurrency(item.priceCents)}</span>
+            </div>
+            <strong>${formatCurrency(item.priceCents * item.quantity)}</strong>
+          </li>
+        `
+      )
+      .join('') || '<li class="invoice-item"><strong>Sin productos en la orden.</strong></li>';
+  invoiceTotalValue.textContent = formatCurrency(summary.totalCents);
+  if (invoiceAutoStatus) {
+    invoiceAutoStatus.textContent = summary.emailSent
+      ? 'Factura enviada automáticamente a tu correo registrado.'
+      : 'Comparte o descarga tu factura usando las acciones disponibles.';
+  }
+  if (invoiceShareStatus) {
+    invoiceShareStatus.classList.add('hidden');
+  }
+  if (sendInvoiceEmailButton) {
+    sendInvoiceEmailButton.disabled = false;
+    sendInvoiceEmailButton.textContent = 'Enviar por correo';
+  }
+  if (sendInvoiceWhatsAppButton) {
+    sendInvoiceWhatsAppButton.disabled = false;
+    sendInvoiceWhatsAppButton.textContent = 'Enviar por WhatsApp';
+  }
+  if (downloadInvoiceLink) {
+    if (summary.invoiceUrl) {
+      downloadInvoiceLink.href = summary.invoiceUrl;
+      downloadInvoiceLink.removeAttribute('aria-disabled');
+      downloadInvoiceLink.setAttribute('download', `factura-${summary.orderId}.pdf`);
+    } else {
+      downloadInvoiceLink.href = '#';
+      downloadInvoiceLink.setAttribute('aria-disabled', 'true');
+      downloadInvoiceLink.removeAttribute('download');
+    }
+  }
+};
+
+const renderShippingSummary = (option: ShippingOption) => {
+  if (!shippingSummaryContainer || !lastCheckoutSummary) return;
+  shippingSummaryContainer.innerHTML = `
+    <strong>${option.name}</strong>
+    <span>${option.description}</span>
+    <span>Tiempo estimado: ${option.eta}</span>
+    <span>Costo de envío: ${formatCurrency(option.priceCents)}</span>
+    <span>Pedido asociado: #${lastCheckoutSummary.orderId}</span>
+  `;
+};
+
+const renderTrackingTimeline = (option: ShippingOption) => {
+  if (!trackingTimelineContainer) return;
+  const now = new Date();
+  const hours = (offset: number) => new Date(now.getTime() + offset * 60 * 60 * 1000);
+  const steps = [
+    { title: 'Factura generada', detail: 'Factura futurista lista para compartirse.', timestamp: now },
+    { title: 'Paquete preparándose', detail: 'El almacén holográfico segmenta tus artículos.', timestamp: hours(1) },
+    { title: 'En tránsito', detail: option.name, timestamp: hours(2) },
+    { title: 'Entrega estimada', detail: option.eta, timestamp: hours(4) }
+  ];
+  trackingTimelineContainer.innerHTML = steps
+    .map(
+      (step) => `
+        <div class="tracking-step">
+          <strong>${step.title}</strong>
+          <span>${step.detail}</span>
+          <span>${step.timestamp.toLocaleString('es-MX')}</span>
+        </div>
+      `
+    )
+    .join('');
+};
+
+const showCheckoutFlow = (summary: CheckoutSummary) => {
+  lastCheckoutSummary = summary;
+  renderInvoiceSummary(summary);
+  renderShippingOptions();
+  resetShippingSelection();
+  updateCheckoutStep('invoice');
+  checkoutFlowSection?.classList.remove('hidden');
+  dismissCheckoutFlowButton?.classList.remove('hidden');
+  checkoutFlowSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+const handleInvoiceShare = (method: 'email' | 'whatsapp') => {
+  if (!invoiceShareStatus || !lastCheckoutSummary) return;
+  const message =
+    method === 'email'
+      ? `Factura preparada para ${sessionUser?.email ?? 'tu correo principal'}.`
+      : 'Enlace listo para compartir por WhatsApp.';
+  invoiceShareStatus.textContent = message;
+  invoiceShareStatus.classList.remove('hidden');
+  if (method === 'email' && sendInvoiceEmailButton) {
+    sendInvoiceEmailButton.textContent = 'Correo enviado';
+  }
+  if (method === 'whatsapp' && sendInvoiceWhatsAppButton) {
+    sendInvoiceWhatsAppButton.textContent = 'Enlace compartido';
+  }
+};
+
+const hideCheckoutFlow = () => {
+  checkoutFlowSection?.classList.add('hidden');
+  dismissCheckoutFlowButton?.classList.add('hidden');
+  lastCheckoutSummary = null;
+  resetShippingSelection();
+  updateCheckoutStep('invoice');
+};
 
 const renderProducts = (products: Product[]) => {
   if (!productsContainer) return;
@@ -111,6 +424,7 @@ const loadProducts = async (params = '') => {
 const loadCart = async () => {
   try {
     const cart = await fetchJSON<Cart | null>('/api/cart');
+    latestCartData = cart;
     if (!cartItemsContainer || !cartTotalElement) return;
     cartItemsContainer.innerHTML = '';
     const items = cart?.items ?? [];
@@ -146,7 +460,7 @@ const loadReviews = async () => {
           <article class="review-card">
             <h3>${'★'.repeat(review.rating)}</h3>
             <p>${review.comment}</p>
-            <small>${review.user.name}</small>
+            <small>${review.user?.name ?? 'Usuario anónimo'}</small>
           </article>
         `
       )
@@ -245,6 +559,120 @@ const loadDashboard = async () => {
   }
 };
 
+const setAuthStatus = (user: SessionUser | null): void => {
+  sessionUser = user;
+  if (!authStatusElement) return;
+  if (user) {
+    authStatusElement.textContent = `Sesión activa: ${user.name} (${user.role})`;
+    logoutButton?.classList.remove('hidden');
+    collapseAuthPanel();
+  } else {
+    authStatusElement.textContent = 'Sin sesión. Despliega el submenú para autenticarte.';
+    logoutButton?.classList.add('hidden');
+    hideCheckoutFlow();
+  }
+};
+
+const loadCurrentUser = async (): Promise<void> => {
+  try {
+    const { user } = await fetchJSON<{ user: SessionUser | null }>('/api/auth/me');
+    setAuthStatus(user ?? null);
+  } catch {
+    setAuthStatus(null);
+  }
+};
+
+const setupAuthForms = () => {
+  registerForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(registerForm);
+    const payload = {
+      name: (formData.get('name') ?? '').toString().trim(),
+      email: (formData.get('email') ?? '').toString().toLowerCase(),
+      password: (formData.get('password') ?? '').toString(),
+      role: (formData.get('role') || undefined)?.toString() || undefined
+    };
+    try {
+      await fetchJSON('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+      alert('Usuario registrado correctamente. Ahora puedes iniciar sesión.');
+      registerForm.reset();
+    } catch (error) {
+      alert('No se pudo registrar el usuario.');
+      console.error('Error creando usuario', error);
+    }
+  });
+
+  loginForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(loginForm);
+    const payload = {
+      email: (formData.get('email') ?? '').toString().toLowerCase(),
+      password: (formData.get('password') ?? '').toString()
+    };
+    try {
+      await fetchJSON('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) });
+      alert('Autenticación exitosa. Ya puedes generar tu factura.');
+      loginForm.reset();
+      await loadCurrentUser();
+    } catch (error) {
+      alert('Credenciales inválidas, intenta nuevamente.');
+      console.error('Error al iniciar sesión', error);
+    }
+  });
+
+  logoutButton?.addEventListener('click', async () => {
+    try {
+      await fetchJSON('/api/auth/logout', { method: 'POST' });
+      alert('Sesión cerrada.');
+      await loadCurrentUser();
+    } catch (error) {
+      alert('No se pudo cerrar sesión.');
+      console.error('Error cerrando sesión', error);
+    }
+  });
+};
+
+const setupAuthPanelToggle = () => {
+  toggleAuthPanelButton?.addEventListener('click', () => {
+    setAuthPanelState(!authPanelExpanded);
+  });
+};
+
+const setupCheckoutFlow = () => {
+  sendInvoiceEmailButton?.addEventListener('click', () => handleInvoiceShare('email'));
+  sendInvoiceWhatsAppButton?.addEventListener('click', () => handleInvoiceShare('whatsapp'));
+  downloadInvoiceLink?.addEventListener('click', (event) => {
+    if (lastCheckoutSummary?.invoiceUrl) return;
+    event.preventDefault();
+    alert('El PDF aún no está disponible. Intenta nuevamente en unos segundos.');
+  });
+  goToShippingButton?.addEventListener('click', () => {
+    if (!lastCheckoutSummary) return;
+    updateCheckoutStep('shipping');
+  });
+  backToInvoiceButton?.addEventListener('click', () => updateCheckoutStep('invoice'));
+  backToShippingButton?.addEventListener('click', () => updateCheckoutStep('shipping'));
+  confirmShippingButton?.addEventListener('click', () => {
+    if (!selectedShippingOption || !lastCheckoutSummary) return;
+    renderShippingSummary(selectedShippingOption);
+    renderTrackingTimeline(selectedShippingOption);
+    updateCheckoutStep('confirmation');
+  });
+  finishCheckoutFlowButton?.addEventListener('click', () => hideCheckoutFlow());
+  dismissCheckoutFlowButton?.addEventListener('click', () => hideCheckoutFlow());
+  shippingOptionsContainer?.addEventListener('click', (event) => {
+    const optionButton = (event.target as HTMLElement).closest<HTMLButtonElement>('.shipping-option-card');
+    if (!optionButton) return;
+    const option = shippingOptionsCatalog.find((entry) => entry.id === optionButton.dataset.option);
+    if (!option) return;
+    selectedShippingOption = option;
+    shippingOptionsContainer?.querySelectorAll('.shipping-option-card').forEach((card) => {
+      card.classList.toggle('is-selected', card === optionButton);
+    });
+    confirmShippingButton?.removeAttribute('disabled');
+  });
+};
+
 const setupInteractions = () => {
   document.querySelector('#explore')?.addEventListener('click', () => {
     document.querySelector('#catalog')?.scrollIntoView({ behavior: 'smooth' });
@@ -318,25 +746,29 @@ const setupInteractions = () => {
   });
 
   document.querySelector('#checkout')?.addEventListener('click', async () => {
-    try {
-      await fetchJSON('/api/cart/checkout', { method: 'POST' });
-      alert('Pago completado. Revisa tu correo para la factura.');
+    if (!sessionUser) {
+      alert('Debes iniciar sesión para generar tu factura y continuar con el checkout.');
+      openAuthPanel();
+      authPanelElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (!latestCartData) {
       await loadCart();
+    }
+    if (!latestCartData || latestCartData.items.length === 0) {
+      alert('Tu carrito está vacío. Agrega mercancía antes de continuar.');
+      return;
+    }
+    const cartSnapshot = cloneCartForInvoice(latestCartData);
+    try {
+      const response = await fetchJSON<CheckoutResponse>('/api/cart/checkout', { method: 'POST' });
+      const summary = buildCheckoutSummary(cartSnapshot, response);
+      await loadCart();
+      showCheckoutFlow(summary);
     } catch (error) {
-      const wantsLogin = confirm('Debes iniciar sesión para pagar. ¿Deseas iniciar sesión ahora?');
-      if (!wantsLogin) return;
-      const email = prompt('Correo electrónico futurista');
-      const password = prompt('Contraseña encriptada');
-      if (!email || !password) return;
-      try {
-        await fetchJSON('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-        await fetchJSON('/api/cart/checkout', { method: 'POST' });
-        alert('Pago completado. Revisa tu correo para la factura.');
-        await loadCart();
-      } catch (loginError) {
-        alert('No se pudo iniciar sesión o completar el pago.');
-        console.error(loginError);
-      }
+      alert('No se pudo procesar el checkout. Verifica tu sesión e inténtalo nuevamente.');
+      console.error('Error completando checkout', error);
+      await loadCurrentUser();
     }
   });
 };
@@ -346,4 +778,8 @@ void loadCart();
 void loadReviews();
 void loadBlog();
 void loadDashboard();
+void loadCurrentUser();
+setupAuthPanelToggle();
+setupAuthForms();
+setupCheckoutFlow();
 setupInteractions();
