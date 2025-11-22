@@ -24,7 +24,8 @@ const normalizeNumber = (value: string): string => {
   return cleaned.startsWith('whatsapp:') ? cleaned : `whatsapp:${cleaned}`;
 };
 
-const normalizeFrom = (value: string): string => (value.startsWith('whatsapp:') ? value : `whatsapp:${value}`);
+const normalizeFrom = (value: string): string =>
+  value.startsWith('whatsapp:') ? value : `whatsapp:${value}`;
 
 export const sendWhatsAppInvoice = async ({
   to,
@@ -40,14 +41,36 @@ export const sendWhatsAppInvoice = async ({
   customerName: string;
 }): Promise<void> => {
   const twilioClient = ensureClient();
+
   const body = `Hola ${customerName || 'cliente'}! Tu factura ${orderId} por ${formatCurrency(
     totalCents
   )} esta lista. Descarga el PDF desde este mensaje.`;
 
-  await twilioClient.messages.create({
-    from: normalizeFrom(env.TWILIO_WHATSAPP_FROM!),
-    to: normalizeNumber(to),
-    body,
-    mediaUrl: [invoiceUrl]
-  });
+  const from = normalizeFrom(env.TWILIO_WHATSAPP_FROM!);
+  const toNormalized = normalizeNumber(to);
+
+  console.log('================= TWILIO DEBUG =================');
+  console.log('TWILIO_ACCOUNT_SID =', JSON.stringify(env.TWILIO_ACCOUNT_SID));
+  console.log('FROM (env.TWILIO_WHATSAPP_FROM) =', JSON.stringify(env.TWILIO_WHATSAPP_FROM));
+  console.log('FROM NORMALIZED =', JSON.stringify(from));
+  console.log('TO ORIGINAL =', JSON.stringify(to));
+  console.log('TO NORMALIZED =', JSON.stringify(toNormalized));
+  console.log('INVOICE URL =', JSON.stringify(invoiceUrl));
+  console.log('=================================================');
+
+  try {
+    const result = await twilioClient.messages.create({
+      from,
+      to: toNormalized,
+      body,
+      mediaUrl: [invoiceUrl]
+    });
+
+    console.log('TWILIO MESSAGE CREATED SID =', result.sid);
+  } catch (error: any) {
+    console.error('TWILIO ERROR STATUS =', error?.status);
+    console.error('TWILIO ERROR CODE   =', error?.code);
+    console.error('TWILIO ERROR MSG    =', error?.message);
+    throw error;
+  }
 };
