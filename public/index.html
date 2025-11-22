@@ -179,6 +179,18 @@
               <span>Total pagado</span>
               <strong id="invoiceTotal">$0.00 MXN</strong>
             </div>
+            <div class="invoice-share-field">
+              <label for="invoiceWhatsApp">Número de WhatsApp</label>
+              <input
+                id="invoiceWhatsApp"
+                name="invoiceWhatsApp"
+                type="tel"
+                inputmode="tel"
+                placeholder="+52 55 1234 5678"
+                aria-describedby="invoiceShareStatus"
+              />
+              <small>Enviaremos el PDF firmado en el mismo mensaje.</small>
+            </div>
             <div class="invoice-actions">
               <button class="btn btn--secondary" id="sendInvoiceEmail" type="button">Enviar por correo</button>
               <button class="btn btn--secondary" id="sendInvoiceWhatsApp" type="button">Enviar por WhatsApp</button>

@@ -74,6 +74,11 @@ type CheckoutResponse = {
   emailSent: boolean;
 };
 
+type ShareInvoiceResponse = {
+  message: string;
+  invoiceUrl: string;
+};
+
 const shippingOptionsCatalog: ShippingOption[] = [
   {
     id: 'drone',
@@ -128,6 +133,7 @@ const invoiceItemsList = document.querySelector<HTMLUListElement>('#invoiceItems
 const invoiceTotalValue = document.querySelector<HTMLSpanElement>('#invoiceTotal');
 const invoiceAutoStatus = document.querySelector<HTMLSpanElement>('#invoiceAutoStatus');
 const invoiceShareStatus = document.querySelector<HTMLParagraphElement>('#invoiceShareStatus');
+const invoiceWhatsAppInput = document.querySelector<HTMLInputElement>('#invoiceWhatsApp');
 const sendInvoiceEmailButton = document.querySelector<HTMLButtonElement>('#sendInvoiceEmail');
 const sendInvoiceWhatsAppButton = document.querySelector<HTMLButtonElement>('#sendInvoiceWhatsApp');
 const downloadInvoiceLink = document.querySelector<HTMLAnchorElement>('#downloadInvoice');
@@ -155,7 +161,17 @@ const fetchJSON = async <T>(url: string, options?: RequestInit): Promise<T> => {
   });
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    const raw = await response.text();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const message = (parsed as { message?: string })?.message ?? raw;
+        throw new Error(typeof message === 'string' ? message : raw);
+      } catch {
+        throw new Error(raw);
+      }
+    }
+    throw new Error('No se pudo completar la solicitud.');
   }
 
   if (response.status === 204) {
@@ -296,6 +312,10 @@ const renderInvoiceSummary = (summary: CheckoutSummary) => {
   }
   if (invoiceShareStatus) {
     invoiceShareStatus.classList.add('hidden');
+    invoiceShareStatus.textContent = '';
+  }
+  if (invoiceWhatsAppInput) {
+    invoiceWhatsAppInput.value = invoiceWhatsAppInput.value || '';
   }
   if (sendInvoiceEmailButton) {
     sendInvoiceEmailButton.disabled = false;
@@ -363,19 +383,55 @@ const showCheckoutFlow = (summary: CheckoutSummary) => {
   checkoutFlowSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
-const handleInvoiceShare = (method: 'email' | 'whatsapp') => {
+const handleInvoiceShare = async (method: 'email' | 'whatsapp') => {
   if (!invoiceShareStatus || !lastCheckoutSummary) return;
-  const message =
-    method === 'email'
-      ? `Factura preparada para ${sessionUser?.email ?? 'tu correo principal'}.`
-      : 'Enlace listo para compartir por WhatsApp.';
-  invoiceShareStatus.textContent = message;
-  invoiceShareStatus.classList.remove('hidden');
-  if (method === 'email' && sendInvoiceEmailButton) {
-    sendInvoiceEmailButton.textContent = 'Correo enviado';
+
+  const payload: Record<string, unknown> = { method };
+  const targetButton = method === 'email' ? sendInvoiceEmailButton : sendInvoiceWhatsAppButton;
+
+  if (method === 'whatsapp') {
+    const phone = invoiceWhatsAppInput?.value.trim();
+    if (!phone) {
+      invoiceShareStatus.textContent = 'Ingresa un numero de WhatsApp con lada internacional.';
+      invoiceShareStatus.classList.remove('hidden');
+      return;
+    }
+    payload.phone = phone;
   }
-  if (method === 'whatsapp' && sendInvoiceWhatsAppButton) {
-    sendInvoiceWhatsAppButton.textContent = 'Enlace compartido';
+
+  invoiceShareStatus.textContent =
+    method === 'email' ? 'Reenviando la factura a tu correo...' : 'Enviando PDF por WhatsApp...';
+  invoiceShareStatus.classList.remove('hidden');
+  targetButton?.setAttribute('disabled', 'true');
+
+  try {
+    const response = await fetchJSON<ShareInvoiceResponse>(
+      `/api/cart/orders/${lastCheckoutSummary.orderId}/share`,
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+
+    if (method === 'email' && sendInvoiceEmailButton) {
+      sendInvoiceEmailButton.textContent = 'Correo enviado';
+    }
+    if (method === 'whatsapp' && sendInvoiceWhatsAppButton) {
+      sendInvoiceWhatsAppButton.textContent = 'WhatsApp enviado';
+    }
+
+    if (downloadInvoiceLink && response.invoiceUrl) {
+      downloadInvoiceLink.href = response.invoiceUrl;
+      downloadInvoiceLink.removeAttribute('aria-disabled');
+      downloadInvoiceLink.setAttribute('download', `factura-${lastCheckoutSummary.orderId}.pdf`);
+    }
+    if (lastCheckoutSummary) {
+      lastCheckoutSummary.invoiceUrl = response.invoiceUrl;
+    }
+
+    invoiceShareStatus.textContent = response.message;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No se pudo compartir la factura.';
+    invoiceShareStatus.textContent = message;
+  } finally {
+    targetButton?.removeAttribute('disabled');
   }
 };
 
@@ -639,8 +695,8 @@ const setupAuthPanelToggle = () => {
 };
 
 const setupCheckoutFlow = () => {
-  sendInvoiceEmailButton?.addEventListener('click', () => handleInvoiceShare('email'));
-  sendInvoiceWhatsAppButton?.addEventListener('click', () => handleInvoiceShare('whatsapp'));
+  sendInvoiceEmailButton?.addEventListener('click', () => void handleInvoiceShare('email'));
+  sendInvoiceWhatsAppButton?.addEventListener('click', () => void handleInvoiceShare('whatsapp'));
   downloadInvoiceLink?.addEventListener('click', (event) => {
     if (lastCheckoutSummary?.invoiceUrl) return;
     event.preventDefault();

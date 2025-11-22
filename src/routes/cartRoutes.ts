@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { addItemToCart, checkout, getCart, removeCartItem, updateCartItem } from '../controllers/cartController';
+import {
+  addItemToCart,
+  checkout,
+  getCart,
+  removeCartItem,
+  shareInvoice,
+  updateCartItem
+} from '../controllers/cartController';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -9,5 +16,6 @@ router.post('/items', addItemToCart);
 router.patch('/items/:itemId', updateCartItem);
 router.delete('/items/:itemId', removeCartItem);
 router.post('/checkout', requireAuth, checkout);
+router.post('/orders/:orderId/share', requireAuth, shareInvoice);
 
 export default router;
