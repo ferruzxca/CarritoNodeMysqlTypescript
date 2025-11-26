@@ -8,7 +8,11 @@ import { sendEmail } from '../services/emailService';
 import { Prisma } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { sendWhatsAppInvoice } from '../services/whatsappService';
+import { sendTelegramInvoice } from '../services/telegramService';
 import { env } from '../config/env';
+
+const hasWhatsAppConfig = (): boolean =>
+  Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_WHATSAPP_FROM);
 
 const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)} MXN`;
 
@@ -201,11 +205,12 @@ export const addItemToCart = async (req: Request, res: Response): Promise<void> 
 export const shareInvoice = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { orderId } = z.object({ orderId: z.string().cuid() }).parse(req.params);
-    const { method, phone, email } = z
+    const { method, phone, email, telegramChatId } = z
       .object({
-        method: z.enum(['email', 'whatsapp']),
+        method: z.enum(['email', 'whatsapp', 'telegram']),
         phone: z.string().optional(),
-        email: z.string().email().optional()
+        email: z.string().email().optional(),
+        telegramChatId: z.string().min(1, 'Indica el chat ID de Telegram').optional()
       })
       .parse(req.body);
 
@@ -244,20 +249,59 @@ export const shareInvoice = async (req: AuthenticatedRequest, res: Response): Pr
     }
 
     if (method === 'whatsapp') {
+      if (!hasWhatsAppConfig()) {
+        res
+          .status(400)
+          .json({ message: 'WhatsApp no está configurado. Usa Telegram o correo, o define las variables de Twilio.' });
+        return;
+      }
+
       if (!phone) {
         res.status(400).json({ message: 'Indica el número de WhatsApp con lada.' });
         return;
       }
 
-      await sendWhatsAppInvoice({
-        to: phone,
+      try {
+        await sendWhatsAppInvoice({
+          to: phone,
+          invoiceUrl,
+          orderId: order.id,
+          totalCents: order.totalCents,
+          customerName: order.user.name
+        });
+
+        await prisma.invoice.updateMany({ where: { orderId: order.id }, data: { sentAt: new Date() } });
+
+        res.status(200).json({ message: 'Factura enviada por WhatsApp.', invoiceUrl });
+        return;
+      } catch (whatsappError: any) {
+        const errorMessage =
+          whatsappError?.message ??
+          'No se pudo enviar por WhatsApp. Verifica TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y TWILIO_WHATSAPP_FROM.';
+        res.status(502).json({ message: errorMessage });
+        return;
+      }
+    }
+
+    if (method === 'telegram') {
+      if (!telegramChatId) {
+        res.status(400).json({ message: 'Indica el chat ID de Telegram del destinatario.' });
+        return;
+      }
+
+      await sendTelegramInvoice({
+        chatId: telegramChatId,
         invoiceUrl,
         orderId: order.id,
         totalCents: order.totalCents,
-        customerName: order.user.name
+        customerName: order.user.name,
+        invoicePath,
+        invoiceFileName
       });
 
-      res.status(200).json({ message: 'Factura enviada por WhatsApp.', invoiceUrl });
+      await prisma.invoice.updateMany({ where: { orderId: order.id }, data: { sentAt: new Date() } });
+
+      res.status(200).json({ message: 'Factura enviada por Telegram.', invoiceUrl });
       return;
     }
 
@@ -425,47 +469,19 @@ export const checkout = async (req: AuthenticatedRequest, res: Response): Promis
 
     const invoicePath = path.join(process.cwd(), 'storage', 'invoices', `invoice-${order.order.id}.pdf`);
 
-    let emailSent = false;
-    try {
-      const emailHtml = buildInvoiceEmail({
-        orderId: order.order.id,
-        totalCents: order.order.totalCents,
-        invoiceUrl,
-        customerName: order.user.name,
-        customerEmail: order.user.email,
-        items: orderWithNames.items.map((item) => ({
-          name: item.productName,
-          quantity: item.quantity,
-          priceCents: item.priceCents
-        }))
-      });
-
-      await sendEmail({
-        to: order.user.email,
-        subject: 'Tu factura digital de Cyberpunk Neon Market',
-        html: emailHtml,
-        attachments: [{ filename: `invoice-${order.order.id}.pdf`, path: invoicePath }]
-      });
-      emailSent = true;
-    } catch (emailError) {
-      console.error('No se pudo enviar la factura por correo, se continuará con el flujo.', emailError);
-    }
-
     await prisma.invoice.create({
       data: {
         orderId: order.order.id,
         pdfUrl: invoiceUrl,
-        sentAt: emailSent ? new Date() : null
+        sentAt: null
       }
     });
 
     await prisma.order.update({ where: { id: order.order.id }, data: { invoiceUrl } });
 
-    const responseMessage = emailSent
-      ? 'Pago realizado con éxito. Revisa tu correo para la factura.'
-      : 'Pago realizado con éxito. No pudimos enviar la factura por correo, descárgala desde el enlace.';
+    const responseMessage = 'Pago realizado con éxito. Descarga o envía tu factura con los botones disponibles.';
 
-    res.status(201).json({ message: responseMessage, orderId: order.order.id, invoiceUrl, emailSent });
+    res.status(201).json({ message: responseMessage, orderId: order.order.id, invoiceUrl, emailSent: false });
   } catch (error) {
     console.error('Error en checkout', error);
     res.status(500).json({ message: 'No se pudo procesar el pago.' });

@@ -8,7 +8,8 @@ Aplicación web de e-commerce futurista creada con Node.js, TypeScript y MySQL. 
 - **Autenticación contextual**: el usuario puede navegar sin iniciar sesión y únicamente se solicita login al momento de pagar. Incluye roles `CUSTOMER`, `VENDOR` y `SUPERADMIN`.
 - **Gestión de contenido**: súper usuario puede crear productos, promociones, publicaciones de blog y monitorear ventas. Vendedores tienen acceso restringido para gestionar su catálogo.
 - **Experiencia de compra completa**: carrito holográfico con persistencia por sesión, filtrado avanzado, buscador con autocompletado, reseñas y comentarios de productos.
-- **Checkout profesional**: crea órdenes, genera factura PDF con estilo neon y la envía por correo electrónico al cliente usando Nodemailer.
+- **Checkout profesional**: crea órdenes, genera factura PDF con estilo neon y la envía por correo electrónico al cliente (con reenvío por WhatsApp o Telegram).
+- **Notificaciones multicanal**: reenvío de facturas por correo, WhatsApp (Twilio) o Telegram Bot con enlace directo al PDF.
 - **Dashboard visual**: API que expone métricas de ventas y productos más vendidos para graficarlas en el frontend.
 - **Frontend Cyberpunk**: interfaz en HTML, CSS y TypeScript compilado, con animaciones neon, paleta rosa/azul metálico y componentes interactivos.
 
@@ -45,6 +46,23 @@ Aplicación web de e-commerce futurista creada con Node.js, TypeScript y MySQL. 
    ```bash
    npx prisma studio
    ```
+
+### Variables opcionales para reenvío de facturas
+
+- WhatsApp (Twilio): `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`.
+- Telegram: `TELEGRAM_BOT_TOKEN` (de tu bot creado con @BotFather).
+- Recuerda mantener `APP_URL` apuntando al dominio público donde se servirán los PDFs (`/invoices`).
+
+## Despliegue en Render
+
+1. Prepara el código en GitHub/GitLab y crea una BD MySQL accesible (puede ser el servicio de Render o un proveedor externo). Copia la URL en formato `mysql://user:pass@host:3306/db`.
+2. En Render, crea un **Web Service** desde el repo. Configura:
+   - Build Command: `npm install && npm run build`
+   - Start Command: `npm start`
+3. Variables de entorno mínimas: `DATABASE_URL`, `SESSION_SECRET`, `APP_URL` (tu dominio de Render, ej. `https://tu-app.onrender.com`), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `MAIL_FROM`, `NODE_ENV=production`. Opcionales: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `TELEGRAM_BOT_TOKEN`.
+4. Ejecuta migraciones desde el shell de Render: `npx prisma migrate deploy` (o añade este comando en un script de despliegue).
+5. Para conservar las facturas PDF entre deploys, agrega un **Disk** montado en `/opt/render/project/src/storage` (Render > Add Disk) con al menos 1 GB.
+6. Despliega. Valida `/health` y prueba el checkout + compartir factura (`/api/cart/orders/:orderId/share`) apuntando `APP_URL` al dominio final.
 
 ## Scripts disponibles
 

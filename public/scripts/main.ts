@@ -134,8 +134,10 @@ const invoiceTotalValue = document.querySelector<HTMLSpanElement>('#invoiceTotal
 const invoiceAutoStatus = document.querySelector<HTMLSpanElement>('#invoiceAutoStatus');
 const invoiceShareStatus = document.querySelector<HTMLParagraphElement>('#invoiceShareStatus');
 const invoiceWhatsAppInput = document.querySelector<HTMLInputElement>('#invoiceWhatsApp');
+const invoiceTelegramInput = document.querySelector<HTMLInputElement>('#invoiceTelegram');
 const sendInvoiceEmailButton = document.querySelector<HTMLButtonElement>('#sendInvoiceEmail');
 const sendInvoiceWhatsAppButton = document.querySelector<HTMLButtonElement>('#sendInvoiceWhatsApp');
+const sendInvoiceTelegramButton = document.querySelector<HTMLButtonElement>('#sendInvoiceTelegram');
 const downloadInvoiceLink = document.querySelector<HTMLAnchorElement>('#downloadInvoice');
 const goToShippingButton = document.querySelector<HTMLButtonElement>('#goToShipping');
 const backToInvoiceButton = document.querySelector<HTMLButtonElement>('#backToInvoice');
@@ -306,9 +308,7 @@ const renderInvoiceSummary = (summary: CheckoutSummary) => {
       .join('') || '<li class="invoice-item"><strong>Sin productos en la orden.</strong></li>';
   invoiceTotalValue.textContent = formatCurrency(summary.totalCents);
   if (invoiceAutoStatus) {
-    invoiceAutoStatus.textContent = summary.emailSent
-      ? 'Factura enviada automáticamente a tu correo registrado.'
-      : 'Comparte o descarga tu factura usando las acciones disponibles.';
+    invoiceAutoStatus.textContent = 'Factura generada. Elige correo, WhatsApp o Telegram para enviarla, o descárgala.';
   }
   if (invoiceShareStatus) {
     invoiceShareStatus.classList.add('hidden');
@@ -317,6 +317,9 @@ const renderInvoiceSummary = (summary: CheckoutSummary) => {
   if (invoiceWhatsAppInput) {
     invoiceWhatsAppInput.value = invoiceWhatsAppInput.value || '';
   }
+  if (invoiceTelegramInput) {
+    invoiceTelegramInput.value = invoiceTelegramInput.value || '';
+  }
   if (sendInvoiceEmailButton) {
     sendInvoiceEmailButton.disabled = false;
     sendInvoiceEmailButton.textContent = 'Enviar por correo';
@@ -324,6 +327,10 @@ const renderInvoiceSummary = (summary: CheckoutSummary) => {
   if (sendInvoiceWhatsAppButton) {
     sendInvoiceWhatsAppButton.disabled = false;
     sendInvoiceWhatsAppButton.textContent = 'Enviar por WhatsApp';
+  }
+  if (sendInvoiceTelegramButton) {
+    sendInvoiceTelegramButton.disabled = false;
+    sendInvoiceTelegramButton.textContent = 'Enviar por Telegram';
   }
   if (downloadInvoiceLink) {
     if (summary.invoiceUrl) {
@@ -383,11 +390,16 @@ const showCheckoutFlow = (summary: CheckoutSummary) => {
   checkoutFlowSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
-const handleInvoiceShare = async (method: 'email' | 'whatsapp') => {
+const handleInvoiceShare = async (method: 'email' | 'whatsapp' | 'telegram') => {
   if (!invoiceShareStatus || !lastCheckoutSummary) return;
 
   const payload: Record<string, unknown> = { method };
-  const targetButton = method === 'email' ? sendInvoiceEmailButton : sendInvoiceWhatsAppButton;
+  const targetButton =
+    method === 'email'
+      ? sendInvoiceEmailButton
+      : method === 'whatsapp'
+        ? sendInvoiceWhatsAppButton
+        : sendInvoiceTelegramButton;
 
   if (method === 'whatsapp') {
     const phone = invoiceWhatsAppInput?.value.trim();
@@ -398,9 +410,22 @@ const handleInvoiceShare = async (method: 'email' | 'whatsapp') => {
     }
     payload.phone = phone;
   }
+  if (method === 'telegram') {
+    const chatId = invoiceTelegramInput?.value.trim();
+    if (!chatId) {
+      invoiceShareStatus.textContent = 'Ingresa el chat ID de Telegram.';
+      invoiceShareStatus.classList.remove('hidden');
+      return;
+    }
+    payload.telegramChatId = chatId;
+  }
 
   invoiceShareStatus.textContent =
-    method === 'email' ? 'Reenviando la factura a tu correo...' : 'Enviando PDF por WhatsApp...';
+    method === 'email'
+      ? 'Reenviando la factura a tu correo...'
+      : method === 'whatsapp'
+        ? 'Enviando PDF por WhatsApp...'
+        : 'Enviando PDF por Telegram...';
   invoiceShareStatus.classList.remove('hidden');
   targetButton?.setAttribute('disabled', 'true');
 
@@ -415,6 +440,9 @@ const handleInvoiceShare = async (method: 'email' | 'whatsapp') => {
     }
     if (method === 'whatsapp' && sendInvoiceWhatsAppButton) {
       sendInvoiceWhatsAppButton.textContent = 'WhatsApp enviado';
+    }
+    if (method === 'telegram' && sendInvoiceTelegramButton) {
+      sendInvoiceTelegramButton.textContent = 'Telegram enviado';
     }
 
     if (downloadInvoiceLink && response.invoiceUrl) {
@@ -697,6 +725,7 @@ const setupAuthPanelToggle = () => {
 const setupCheckoutFlow = () => {
   sendInvoiceEmailButton?.addEventListener('click', () => void handleInvoiceShare('email'));
   sendInvoiceWhatsAppButton?.addEventListener('click', () => void handleInvoiceShare('whatsapp'));
+  sendInvoiceTelegramButton?.addEventListener('click', () => void handleInvoiceShare('telegram'));
   downloadInvoiceLink?.addEventListener('click', (event) => {
     if (lastCheckoutSummary?.invoiceUrl) return;
     event.preventDefault();

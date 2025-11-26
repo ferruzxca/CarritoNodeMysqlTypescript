@@ -191,9 +191,22 @@
               />
               <small>Enviaremos el PDF firmado en el mismo mensaje.</small>
             </div>
+            <div class="invoice-share-field">
+              <label for="invoiceTelegram">Chat ID de Telegram</label>
+              <input
+                id="invoiceTelegram"
+                name="invoiceTelegram"
+                type="text"
+                inputmode="numeric"
+                placeholder="123456789"
+                aria-describedby="invoiceShareStatus"
+              />
+              <small>Usa el chat ID del bot (@BotFather) para recibir tu factura.</small>
+            </div>
             <div class="invoice-actions">
               <button class="btn btn--secondary" id="sendInvoiceEmail" type="button">Enviar por correo</button>
               <button class="btn btn--secondary" id="sendInvoiceWhatsApp" type="button">Enviar por WhatsApp</button>
+              <button class="btn btn--secondary" id="sendInvoiceTelegram" type="button">Enviar por Telegram</button>
               <a class="btn btn--primary" id="downloadInvoice" href="#" target="_blank" rel="noopener">Descargar PDF</a>
             </div>
             <p class="status-pill hidden" id="invoiceShareStatus"></p>
