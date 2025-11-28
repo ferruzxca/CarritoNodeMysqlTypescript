@@ -4,8 +4,11 @@ import { z } from 'zod';
 config();
 
 const envSchema = z.object({
-  DATABASE_URL: z.string().url(),
-  SESSION_SECRET: z.string().min(32, 'SESSION_SECRET debe tener al menos 32 caracteres'),
+  // No usamos .url() porque usamos esquema mysql://... con parámetros como ?sslaccept=strict
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL es requerida'),
+  SESSION_SECRET: z
+    .string()
+    .min(32, 'SESSION_SECRET debe tener al menos 32 caracteres'),
   SMTP_HOST: z.string(),
   SMTP_PORT: z.string().transform((value) => {
     const port = Number(value);
@@ -29,7 +32,10 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('Error al cargar variables de entorno', parsed.error.flatten().fieldErrors);
+  console.error(
+    'Error al cargar variables de entorno',
+    parsed.error.flatten().fieldErrors
+  );
   throw new Error('Variables de entorno inválidas. Revisa tu archivo .env');
 }
 

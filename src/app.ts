@@ -6,63 +6,59 @@ import session from 'express-session';
 import connectMySQL from 'express-mysql-session';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import mysql, { PoolOptions } from 'mysql2/promise';
 import routes from './routes';
 import { env } from './config/env';
 import { ensureInvoiceDir } from './utils/pdf';
 
 const MySQLStore = connectMySQL(session);
 
-interface SessionStoreConnectionOptions {
-  host: string;
-  port: number;
-  user: string;
-  password: string;
-  database: string;
-  ssl?: {
-    minVersion?: string;
-    rejectUnauthorized?: boolean;
-  };
-}
-
-const parseDatabaseUrl = (): SessionStoreConnectionOptions => {
+const createSessionPool = () => {
   const url = new URL(env.DATABASE_URL);
 
-  const options: SessionStoreConnectionOptions = {
+  const baseConfig: PoolOptions = {
     host: url.hostname,
-    port: Number(url.port || '3306'),
+    port: Number(url.port || '4000'),
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
     database: url.pathname.replace(/^\//, '')
   };
 
-  // Forzar TLS cuando usamos TiDB Cloud o sslaccept=strict
-  const isTiDB = url.hostname.endsWith('tidbcloud.com');
-  const sslAccept = url.searchParams.get('sslaccept');
+  const isTiDB = url.hostname.includes('tidbcloud.com') || url.searchParams.get('sslaccept') === 'strict';
 
-  if (isTiDB || sslAccept === 'strict') {
-    options.ssl = {
-      minVersion: 'TLSv1.2',
-      rejectUnauthorized: true
-    };
-  }
+  const poolConfig: PoolOptions = isTiDB
+    ? {
+        ...baseConfig,
+        ssl: {
+          minVersion: 'TLSv1.2',
+          rejectUnauthorized: true
+        }
+      }
+    : baseConfig;
 
-  return options;
+  return mysql.createPool(poolConfig);
 };
 
-const sessionStore = new MySQLStore({
-  ...parseDatabaseUrl(),
-  clearExpired: true,
-  checkExpirationInterval: 15 * 60 * 1000,
-  createDatabaseTable: true,
-  schema: {
-    tableName: 'user_sessions',
-    columnNames: {
-      session_id: 'session_id',
-      expires: 'expires',
-      data: 'data'
+// Pool de sesiones con TLS para TiDB
+const sessionPool = createSessionPool();
+
+// Cast a any para evitar el error de tipos de TS; en runtime funciona bien
+const sessionStore = new MySQLStore(
+  {
+    clearExpired: true,
+    checkExpirationInterval: 15 * 60 * 1000,
+    createDatabaseTable: true,
+    schema: {
+      tableName: 'user_sessions',
+      columnNames: {
+        session_id: 'session_id',
+        expires: 'expires',
+        data: 'data'
+      }
     }
-  }
-});
+  },
+  sessionPool as any
+);
 
 export const createApp = async (): Promise<express.Application> => {
   await ensureInvoiceDir();
@@ -122,7 +118,9 @@ export const createApp = async (): Promise<express.Application> => {
   app.use(
     (err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       console.error('Error inesperado', err);
-      res.status(500).json({ message: 'Ocurrió un error inesperado.' });
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Ocurrió un error inesperado.' });
+      }
     }
   );
 
