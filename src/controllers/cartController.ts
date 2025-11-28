@@ -205,12 +205,13 @@ export const addItemToCart = async (req: Request, res: Response): Promise<void> 
 export const shareInvoice = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { orderId } = z.object({ orderId: z.string().cuid() }).parse(req.params);
+
     const { method, phone, email, telegramChatId } = z
       .object({
         method: z.enum(['email', 'whatsapp', 'telegram']),
         phone: z.string().optional(),
         email: z.string().email().optional(),
-        telegramChatId: z.string().min(1, 'Indica el chat ID de Telegram').optional()
+        telegramChatId: z.string().optional()
       })
       .parse(req.body);
 
@@ -284,13 +285,15 @@ export const shareInvoice = async (req: AuthenticatedRequest, res: Response): Pr
     }
 
     if (method === 'telegram') {
-      if (!telegramChatId) {
+      const chatId = telegramChatId ?? '7915151834';
+
+      if (!chatId) {
         res.status(400).json({ message: 'Indica el chat ID de Telegram del destinatario.' });
         return;
       }
 
       await sendTelegramInvoice({
-        chatId: telegramChatId,
+        chatId,
         invoiceUrl,
         orderId: order.id,
         totalCents: order.totalCents,
@@ -422,7 +425,7 @@ export const checkout = async (req: AuthenticatedRequest, res: Response): Promis
     const order = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const user = await tx.user.findUniqueOrThrow({ where: { id: req.userId } });
       const totalCents = cart.items.reduce(
-        (acc: number, item: typeof cart.items[number]) => acc + item.priceCents * item.quantity,
+        (acc: number, item: (typeof cart.items)[number]) => acc + item.priceCents * item.quantity,
         0
       );
 
@@ -479,7 +482,8 @@ export const checkout = async (req: AuthenticatedRequest, res: Response): Promis
 
     await prisma.order.update({ where: { id: order.order.id }, data: { invoiceUrl } });
 
-    const responseMessage = 'Pago realizado con éxito. Descarga o envía tu factura con los botones disponibles.';
+    const responseMessage =
+      'Pago realizado con éxito. Descarga o envía tu factura con los botones disponibles.';
 
     res.status(201).json({ message: responseMessage, orderId: order.order.id, invoiceUrl, emailSent: false });
   } catch (error) {

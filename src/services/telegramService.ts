@@ -11,9 +11,11 @@ const getBot = (): TelegramBot => {
   if (!env.TELEGRAM_BOT_TOKEN) {
     throw new Error('Telegram no esta configurado. Define TELEGRAM_BOT_TOKEN en tus variables de entorno.');
   }
+
   if (!bot) {
     bot = new TelegramBot(env.TELEGRAM_BOT_TOKEN, { polling: false });
   }
+
   return bot;
 };
 
@@ -59,7 +61,10 @@ export const sendTelegramInvoice = async ({
 
   if (invoicePath && (await fileExists(invoicePath))) {
     document = createReadStream(invoicePath);
-    fileOptions = { filename: fileName, contentType: 'application/pdf' };
+    fileOptions = {
+      filename: fileName,
+      contentType: 'application/pdf'
+    };
   }
 
   try {
