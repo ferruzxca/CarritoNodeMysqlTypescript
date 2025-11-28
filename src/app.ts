@@ -18,11 +18,15 @@ interface SessionStoreConnectionOptions {
   user: string;
   password: string;
   database: string;
-  ssl?: { rejectUnauthorized: boolean };
+  ssl?: {
+    minVersion?: string;
+    rejectUnauthorized?: boolean;
+  };
 }
 
 const parseDatabaseUrl = (): SessionStoreConnectionOptions => {
   const url = new URL(env.DATABASE_URL);
+
   const options: SessionStoreConnectionOptions = {
     host: url.hostname,
     port: Number(url.port || '3306'),
@@ -31,8 +35,15 @@ const parseDatabaseUrl = (): SessionStoreConnectionOptions => {
     database: url.pathname.replace(/^\//, '')
   };
 
-  if (url.searchParams.get('sslmode') === 'require') {
-    options.ssl = { rejectUnauthorized: false };
+  // Forzar TLS cuando usamos TiDB Cloud o sslaccept=strict
+  const isTiDB = url.hostname.endsWith('tidbcloud.com');
+  const sslAccept = url.searchParams.get('sslaccept');
+
+  if (isTiDB || sslAccept === 'strict') {
+    options.ssl = {
+      minVersion: 'TLSv1.2',
+      rejectUnauthorized: true
+    };
   }
 
   return options;
@@ -58,12 +69,21 @@ export const createApp = async (): Promise<express.Application> => {
   const app = express();
 
   app.set('trust proxy', 1);
-  app.use(helmet({ contentSecurityPolicy: false }));
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: false
+    })
+  );
+
   app.use(compression());
-  app.use(cors({
-    origin: env.APP_URL,
-    credentials: true
-  }));
+
+  app.use(
+    cors({
+      origin: env.APP_URL,
+      credentials: true
+    })
+  );
 
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -99,10 +119,12 @@ export const createApp = async (): Promise<express.Application> => {
 
   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
 
-  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error('Error inesperado', err);
-    res.status(500).json({ message: 'Ocurrió un error inesperado.' });
-  });
+  app.use(
+    (err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      console.error('Error inesperado', err);
+      res.status(500).json({ message: 'Ocurrió un error inesperado.' });
+    }
+  );
 
   return app;
 };
