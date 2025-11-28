@@ -113,6 +113,7 @@ const productsContainer = document.querySelector<HTMLDivElement>('#products');
 const cartItemsContainer = document.querySelector<HTMLUListElement>('#cartItems');
 const cartTotalElement = document.querySelector<HTMLSpanElement>('#cartTotal');
 const suggestionsList = document.querySelector<HTMLUListElement>('#suggestions');
+const searchInput = document.querySelector<HTMLInputElement>('#search');
 const reviewsContainer = document.querySelector<HTMLDivElement>('#reviewsList');
 const blogContainer = document.querySelector<HTMLDivElement>('#blogPosts');
 const salesChart = document.querySelector<HTMLCanvasElement>('#salesChart');
@@ -804,10 +805,13 @@ const setupInteractions = () => {
     void loadProducts(`?${params.toString()}`);
   });
 
-  document.querySelector('#search')?.addEventListener('input', async (event) => {
+  searchInput?.addEventListener('input', async (event) => {
     const value = (event.target as HTMLInputElement).value;
     if (!value || value.length < 2) {
       if (suggestionsList) suggestionsList.innerHTML = '';
+      if (!value) {
+        void loadProducts();
+      }
       return;
     }
     try {
@@ -823,11 +827,22 @@ const setupInteractions = () => {
     }
   });
 
-  suggestionsList?.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement;
+  suggestionsList?.addEventListener('click', async (event) => {
+    const target = (event.target as HTMLElement).closest<HTMLLIElement>('li[data-slug]');
+    if (!target || !suggestionsList) return;
     const slug = target.getAttribute('data-slug');
     if (!slug) return;
-    window.location.href = `/api/products/${slug}`;
+    try {
+      const product = await fetchJSON<Product>(`/api/products/${slug}`);
+      renderProducts([product]);
+      suggestionsList.innerHTML = '';
+      if (searchInput) {
+        searchInput.value = product.name;
+      }
+      productsContainer?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+      console.error('Error mostrando el producto seleccionado', error);
+    }
   });
 
   document.querySelector('#checkout')?.addEventListener('click', async () => {
